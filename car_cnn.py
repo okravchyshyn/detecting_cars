@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import glob
 import pdb
+import tensorflow as tf
+
 
 PATH_TO_CAR_TRAIN = '/home/okravchyshyn/train_car_images/car*.jpg'
 PATH_TO_NOCAR_TRAIN = '/home/okravchyshyn/train_nocar_images/nocar*.jpg'
@@ -19,13 +21,11 @@ testing_result = np.array([])
 number_of_training_samples = 0 
 number_of_testing_samples = 0
 
-
-
+n_classes = 2
 
 training_samples = 0
 
-
-BATCH_SIZE = 20
+BATCH_SIZE = 100
 
 
 def load_training_data():
@@ -83,7 +83,6 @@ def load_training_data():
     print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
     print 'Testing data'
     print ''
-    pdb.set_trace()
 
     for j in  range(number_of_testing_samples) :
         i = j + number_of_training_samples
@@ -101,35 +100,124 @@ def load_training_data():
 
 def get_training_batch():
     batch_data = np.zeros((BATCH_SIZE, SQURE_SIZE, SQURE_SIZE, 3), np.float32)
-    batch_result = np.zeros(BATCH_SIZE)
+    batch_result = np.zeros((BATCH_SIZE, n_classes ))
     begin_from_idx = np.random.randint(number_of_training_samples)  
 
     for i in range(BATCH_SIZE):
         j = (begin_from_idx + i) % number_of_training_samples
- 
         batch_data[i] = training_data[j]
-        batch_result[i] = training_result[j]
+        if training_result[j] == 1.0:
+            batch_result[i] = (1.0, 0.0)
+        else:
+            batch_result[i] = (0.0, 1.0)
+
 
     return batch_data, batch_result
 
 
 def get_testing_batch():
     batch_data = np.zeros((BATCH_SIZE, SQURE_SIZE, SQURE_SIZE, 3), np.float32)
-    batch_result = np.zeros(BATCH_SIZE)
+    batch_result = np.zeros(BATCH_SIZE, n_classes)
     begin_from_idx = np.random.randint(number_of_testing_samples)  
 
     for i in range(BATCH_SIZE):
         j = (begin_from_idx + i) % number_of_testing_samples
  
         batch_data[i] = testing_data[j]
-        batch_result[i] = testing_result[j]
+        if training_result[j] == 1.0:
+            batch_result[i] = (1.0, 0.0)
+        else:
+            batch_result[i] = (0.0, 1.0)
 
     return batch_data, batch_result
 
 
-pdb.set_trace()
 load_training_data()
 
-pdb.set_trace()
+#pdb.set_trace()
 data, results = get_training_batch()
+
+
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# print tensorflow
+
+learning_rate = 0.0001
+
+def conv2d(img, w, b):
+    return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=[1, 1, 1, 1], padding='SAME'),b))
+
+def max_pool(img, k):
+   return tf.nn.max_pool(img, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
+
+x = tf.placeholder(tf.float32, [None, SQURE_SIZE, SQURE_SIZE, 3 ])
+y = tf.placeholder(tf.float32, [None, n_classes])
+keep_prob = tf. placeholder(tf.float32)
+
+
+wc1 = tf.Variable(tf.random_normal([5, 5, 3, 32]))
+bc1 = tf.Variable(tf.random_normal([32]))
+
+conv1 = conv2d(x, wc1, bc1)
+conv1_with_pooling = max_pool(conv1, k=2)
+conv1_with_prob  = tf.nn.dropout(conv1_with_pooling, keep_prob)
+
+wc2 = tf.Variable(tf.random_normal([5, 5, 32, 64]))
+bc2 = tf.Variable(tf.random_normal([64]))
+
+conv2 = conv2d(conv1_with_prob, wc2, bc2)
+conv2_with_pooling = max_pool(conv2, k=2)
+conv2_with_prob = tf.nn.dropout(conv2_with_pooling, keep_prob)
+
+wd1 = tf.Variable(tf.random_normal([16 * 16 * 64, 1024]))
+bd1 = tf.Variable(tf.random_normal([1024]))
+
+dense1 = tf.reshape(conv2_with_prob, [-1, wd1.get_shape().as_list()[0]])
+dense1_relu = tf.nn.relu(tf.add(tf.matmul(dense1, wd1),bd1))
+
+wout = tf.Variable(tf.random_normal([1024, n_classes]))
+bout = tf.Variable(tf.random_normal([n_classes]))
+
+pred = tf.add(tf.matmul(dense1_relu, wout), bout)
+
+entropy = tf.nn.softmax_cross_entropy_with_logits(logits = pred, labels = y)
+cost = tf.reduce_mean(entropy)
+
+
+optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
+
+correct_pred = tf.equal(tf.argmax(pred,1), tf.argmax(y,1))
+accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+
+init = tf.initialize_all_variables()
+sess = tf.Session()
+sess.run(init)
+
+training_iters = 100000
+step = 1
+dropout = 0.75
+display_step = 10
+
+while step * BATCH_SIZE < training_iters:
+    pass
+    data, results = get_training_batch()
+    #pdb.set_trace()
+
+    sess.run(optimizer, feed_dict={x: data,  y: results, keep_prob: dropout})
+    if step % display_step == 0:
+        acc = sess.run(accuracy, feed_dict={x: data, y: results, keep_prob: 1.})
+        loss = sess.run(cost, feed_dict={x: data, y: results, keep_prob: 1.})
+        print "Iter " + str(step*BATCH_SIZE) + ", Minibatch Loss= " +  "{:.6f}".format(loss) + ", Training Accuracy= " + \
+                  "{:.5f}".format(acc)
+
+
+    step += 1
+
+print "Optimization Finished!"
+
+data, results = get_testing_batch()
+print "Testing Accuracy:",\
+    sess.run(accuracy,\
+    feed_dict={x: data , \
+    y: results ,\
+    keep_prob: 1.})
 
