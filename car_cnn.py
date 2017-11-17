@@ -22,11 +22,13 @@ number_of_training_samples = 0
 number_of_testing_samples = 0
 
 n_classes = 2
+n_channels = 1
 
 training_samples = 0
 
-BATCH_SIZE = 100
-
+BATCH_SIZE = 25
+learning_rate = 0.001
+training_iters = 100000
 
 def load_training_data():
 
@@ -39,7 +41,7 @@ def load_training_data():
     global number_of_training_samples
     global number_of_testing_samples
     
-    img_buffer = np.zeros((SQURE_SIZE, SQURE_SIZE,3), dtype = np.float32) 
+    img_buffer = np.zeros((SQURE_SIZE, SQURE_SIZE, n_channels), dtype = np.float32) 
 
     car_files = glob.glob(PATH_TO_CAR_TRAIN)
     nocar_files = glob.glob(PATH_TO_NOCAR_TRAIN)
@@ -57,10 +59,10 @@ def load_training_data():
     number_of_testing_samples =  len(random_all_sample_idx) - number_of_training_samples
 
 
-    training_data = np.zeros((number_of_training_samples , SQURE_SIZE, SQURE_SIZE, 3), np.float32)
+    training_data = np.zeros((number_of_training_samples , SQURE_SIZE, SQURE_SIZE, n_channels), np.float32)
     training_result = np.zeros(number_of_training_samples)
 
-    testing_data = np.zeros((number_of_testing_samples , SQURE_SIZE, SQURE_SIZE, 3), np.float32)
+    testing_data = np.zeros((number_of_testing_samples , SQURE_SIZE, SQURE_SIZE, n_channels), np.float32)
     testing_result = np.zeros(number_of_testing_samples )
 
 
@@ -73,9 +75,11 @@ def load_training_data():
         r = merged_results[idx_in_car_files]
         print idx_in_car_files, " " , f, " result = " , r 
         img = cv2.imread(f)
-        gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
- 
-        img_buffer = img.astype(np.float32)/255
+        if n_channels == 1:
+             gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+             img_buffer = gray_image.reshape(gray_image.shape[0], gray_image.shape[1], 1).astype(np.float)/255 
+        else:
+             img_buffer = img.astype(np.float32)/255
 
         training_data[i] = img_buffer
         training_result[i] = r
@@ -92,14 +96,18 @@ def load_training_data():
         r = merged_results[idx_in_car_files]
         print idx_in_car_files, " " , f, " result = " , r 
         img = cv2.imread(f)
-        img_buffer = img.astype(np.float32)/255
+        if n_channels == 1:
+             gray_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+             img_buffer = gray_image.reshape(gray_image.shape[0], gray_image.shape[1], 1).astype(np.float)/255 
+        else:
+             img_buffer = img.astype(np.float32)/255
 
         testing_data[j] = img_buffer
         testing_result[j] = r
 
 
 def get_training_batch():
-    batch_data = np.zeros((BATCH_SIZE, SQURE_SIZE, SQURE_SIZE, 3), np.float32)
+    batch_data = np.zeros((BATCH_SIZE, SQURE_SIZE, SQURE_SIZE, n_channels), np.float32)
     batch_result = np.zeros((BATCH_SIZE, n_classes ))
     begin_from_idx = np.random.randint(number_of_training_samples)  
 
@@ -116,8 +124,8 @@ def get_training_batch():
 
 
 def get_testing_batch():
-    batch_data = np.zeros((BATCH_SIZE, SQURE_SIZE, SQURE_SIZE, 3), np.float32)
-    batch_result = np.zeros(BATCH_SIZE, n_classes)
+    batch_data = np.zeros((BATCH_SIZE, SQURE_SIZE, SQURE_SIZE, n_channels), np.float32)
+    batch_result = np.zeros((BATCH_SIZE, n_classes))
     begin_from_idx = np.random.randint(number_of_testing_samples)  
 
     for i in range(BATCH_SIZE):
@@ -133,15 +141,15 @@ def get_testing_batch():
 
 
 load_training_data()
+_,_ = get_testing_batch()
 
-#pdb.set_trace()
+pdb.set_trace()
 data, results = get_training_batch()
 
 
 #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # print tensorflow
 
-learning_rate = 0.0001
 
 def conv2d(img, w, b):
     return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=[1, 1, 1, 1], padding='SAME'),b))
@@ -149,12 +157,12 @@ def conv2d(img, w, b):
 def max_pool(img, k):
    return tf.nn.max_pool(img, ksize=[1, k, k, 1], strides=[1, k, k, 1], padding='SAME')
 
-x = tf.placeholder(tf.float32, [None, SQURE_SIZE, SQURE_SIZE, 3 ])
+x = tf.placeholder(tf.float32, [None, SQURE_SIZE, SQURE_SIZE, n_channels ])
 y = tf.placeholder(tf.float32, [None, n_classes])
 keep_prob = tf. placeholder(tf.float32)
 
 
-wc1 = tf.Variable(tf.random_normal([5, 5, 3, 32]))
+wc1 = tf.Variable(tf.random_normal([5, 5, n_channels, 32]))
 bc1 = tf.Variable(tf.random_normal([32]))
 
 conv1 = conv2d(x, wc1, bc1)
@@ -192,10 +200,11 @@ init = tf.initialize_all_variables()
 sess = tf.Session()
 sess.run(init)
 
-training_iters = 100000
 step = 1
-dropout = 0.75
-display_step = 10
+dropout = 1
+display_step = 1
+
+saver = tf.train.Saver()
 
 while step * BATCH_SIZE < training_iters:
     pass
@@ -211,6 +220,9 @@ while step * BATCH_SIZE < training_iters:
 
 
     step += 1
+
+save_path = saver.save(sess, "model.ckpt")
+print("Model saved in file: %s" % save_path)
 
 print "Optimization Finished!"
 
