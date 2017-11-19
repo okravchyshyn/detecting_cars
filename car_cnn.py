@@ -5,8 +5,8 @@ import pdb
 import tensorflow as tf
 
 
-PATH_TO_CAR_TRAIN = '/home/okravchyshyn/train_car_images/car*.jpg'
-PATH_TO_NOCAR_TRAIN = '/home/okravchyshyn/train_nocar_images/nocar*.jpg'
+PATH_TO_CAR_TRAIN = 'train_car_images/car*.jpg'
+PATH_TO_NOCAR_TRAIN = 'train_nocar_images/nocar*.jpg'
 
 SQURE_SIZE = 64
 
@@ -26,9 +26,10 @@ n_channels = 1
 
 training_samples = 0
 
-BATCH_SIZE = 25
+BATCH_SIZE = 50
 learning_rate = 0.001
-training_iters = 100000
+#training_iters = 2
+training_iters = 150000
 
 def load_training_data():
 
@@ -110,7 +111,7 @@ def get_training_batch():
     batch_data = np.zeros((BATCH_SIZE, SQURE_SIZE, SQURE_SIZE, n_channels), np.float32)
     batch_result = np.zeros((BATCH_SIZE, n_classes ))
     begin_from_idx = np.random.randint(number_of_training_samples)  
-
+    print 'Random idx ' + str(begin_from_idx)
     for i in range(BATCH_SIZE):
         j = (begin_from_idx + i) % number_of_training_samples
         batch_data[i] = training_data[j]
@@ -143,7 +144,7 @@ def get_testing_batch():
 load_training_data()
 _,_ = get_testing_batch()
 
-pdb.set_trace()
+#pdb.set_trace()
 data, results = get_training_batch()
 
 
@@ -201,10 +202,12 @@ sess = tf.Session()
 sess.run(init)
 
 step = 1
-dropout = 1
+dropout = 0.75
 display_step = 1
 
 saver = tf.train.Saver()
+
+loss_c = 0
 
 while step * BATCH_SIZE < training_iters:
     pass
@@ -217,11 +220,16 @@ while step * BATCH_SIZE < training_iters:
         loss = sess.run(cost, feed_dict={x: data, y: results, keep_prob: 1.})
         print "Iter " + str(step*BATCH_SIZE) + ", Minibatch Loss= " +  "{:.6f}".format(loss) + ", Training Accuracy= " + \
                   "{:.5f}".format(acc)
-
+        if loss == 0.0:
+           loss_c = loss_c + 1
+        else:
+           loss_c = 0
+        if loss_c > 50:
+           break 
 
     step += 1
 
-save_path = saver.save(sess, "model.ckpt")
+save_path = saver.save(sess, "./model.ckpt")
 print("Model saved in file: %s" % save_path)
 
 print "Optimization Finished!"
@@ -233,3 +241,16 @@ print "Testing Accuracy:",\
     y: results ,\
     keep_prob: 1.})
 
+data, results = get_testing_batch()
+print "Testing Accuracy #1:",\
+    sess.run(accuracy,\
+    feed_dict={x: data , \
+    y: results ,\
+    keep_prob: 1.})
+
+data, results = get_training_batch()
+print "Testing Training Accuracy #2:",\
+    sess.run(accuracy,\
+    feed_dict={x: data , \
+    y: results ,\
+    keep_prob: 1.})
